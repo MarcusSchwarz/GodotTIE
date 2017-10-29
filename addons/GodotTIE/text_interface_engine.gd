@@ -47,6 +47,7 @@ export(bool) var AUTO_SKIP_WORDS = true # If words that dont fit the line only s
 export(bool) var LOG_SKIPPED_LINES = true # false = delete every line that is not showing on screen
 export(bool) var SCROLL_SKIPPED_LINES = false # if the user will be able to scroll through the skipped lines; weird stuff can happen if this and BREAK_ON_MAX_LINE/LOG_SKIPPED_LINES
 export(bool) var BLINKING_OUTPUT = false # If there is a _ blinking when output is appropriate
+export(bool) var OUTPUT_CENTERED = false
 export(Font) var FONT
 # Text input properties!
 export(bool) var PRINT_INPUT = true # If the input is going to be printed
@@ -96,7 +97,7 @@ func buff_input(tag = "", push_front = false): # 'Schedule' a change state to In
 		_buffer.append(b)
 	else:
 		_buffer.push_front(b)
-		
+
 func buff_clear(tag = "", push_front = false): # Clear the text buffer when this buffer command is run.
 	var b = {"buff_type":BUFF_CLEAR, "buff_tag":tag}
 	if !push_front:
@@ -112,7 +113,7 @@ func clear_buffer(): # Clears all buffs in _buffer
 	_on_break = false
 	set_state(STATE_WAITING)
 	_buffer.clear()
-	
+
 	_output_delay = 0
 	_output_delay_limit = 0
 	_buff_beginning = true
@@ -173,13 +174,16 @@ func set_buff_speed(v): # Changes the velocity of the text being printed
 func _ready():
 	set_fixed_process(true)
 	set_process_input(true)
-	
+
 	add_child(_label)
-	
+
+	if (OUTPUT_CENTERED == true):
+		_label.set_align(HALIGN_CENTER)
+
 	# Setting font of the text
 	if(FONT != null):
 		_label.add_font_override("font", FONT)
-	
+
 	# Setting size of the frame
 	_max_lines = floor(get_size().y/(_label.get_line_height()+_label.get_constant("line_spacing")))
 	_label.set_size(Vector2(get_size().x,get_size().y))
@@ -191,9 +195,9 @@ func _fixed_process(delta):
 			set_state(STATE_WAITING)
 			emit_signal("buff_end")
 			return
-		
+
 		var o = _buffer[0] # Calling this var 'o' was one of my biggest mistakes during the development of this code. I'm sorry about this.
-		
+
 		if (o["buff_type"] == BUFF_DEBUG): # ---- It's a debug! ----
 			if(o["debug_label"] == false):
 				if(o["debug_arg"] == null):
@@ -208,13 +212,13 @@ func _fixed_process(delta):
 			_buffer.pop_front()
 		elif (o["buff_type"] == BUFF_TEXT): # ---- It's a text! ----
 			# -- Print Text --
-			
+
 			if(o["buff_tag"] != "" and _buff_beginning == true):
 				emit_signal("tag_buff", o["buff_tag"])
-			
+
 			if (_turbo): # In case of turbo, print everything on this buff
 				o["buff_vel"] = 0
-			
+
 			if(o["buff_vel"] == 0): # If the velocity is 0, than just print everything
 				while(o["buff_text"] != ""): # Not optimal (not really printing everything at the same time); but is the only way to work with line break
 					if(AUTO_SKIP_WORDS and (o["buff_text"][0] == " " or _buff_beginning)):
@@ -224,7 +228,7 @@ func _fixed_process(delta):
 					o["buff_text"] = o["buff_text"].right(1)
 					if(_max_lines_reached == true):
 						break
-					
+
 			else: # Else, print each character according to velocity
 				_output_delay_limit = o["buff_vel"]
 				if(_buff_beginning):
@@ -282,7 +286,7 @@ func _fixed_process(delta):
 			if(_blink_output_timer > _output_timer_limit):
 				_blink_output_timer -= _output_timer_limit
 				_blink_output()
-	
+
 	elif(_state == STATE_WAITING):
 		if BLINKING_OUTPUT:
 			_blink_output_timer += delta
@@ -296,7 +300,7 @@ func _fixed_process(delta):
 			if(_blink_input_timer > _input_timer_limit):
 				_blink_input_timer -= _input_timer_limit
 				_blink_input()
-	
+
 	pass
 
 func _input(event):
@@ -316,7 +320,7 @@ func _input(event):
 		elif(_state == 2): # If its on the input state
 			if(BLINKING_INPUT): # Stop blinking line while inputing
 				_blink_input(true) 
-			
+
 			var input = _label.get_text().right(_input_index) # Get Input
 			input = input.replace("\n","")
 
@@ -330,7 +334,7 @@ func _input(event):
 						_delete_last_character()
 						i-=1
 				set_state(STATE_OUTPUT)
-			
+
 			elif(event.unicode >= 32 and event.unicode <= 126): # Add character
 				if(INPUT_CHARACTERS_LIMIT < 0 or input.length() < INPUT_CHARACTERS_LIMIT):
 					_label_print(_ARRAY_CHARS[event.unicode-32])
@@ -366,6 +370,9 @@ func _blink_output(reset = false):
 		_blink_output_visible = false
 		_blink_output_timer = 0
 		return
+	if (OUTPUT_CENTERED):
+		return
+
 	if(_blink_output_visible):
 		_delete_last_character()
 		_blink_output_visible = false
@@ -416,7 +423,12 @@ func _skip_word():
 
 func _label_print(t): # Add text to the label
 	var n = _label.get_line_count()
-	_label.set_text(_label.get_text() + t)
+
+	if (BLINKING_OUTPUT and OUTPUT_CENTERED):
+		_label.set_text(_label.get_text().left(_label.get_text().length() - 1) + t + "_")
+	else:
+		_label.set_text(_label.get_text() + t)
+
 	if(_label.get_line_count() > n): # If number of lines increased
 		if(_label.get_line_count()-_label.get_lines_skipped() > _max_lines): # If it exceeds _max_lines
 			# Check if it is a rogue blinking input
