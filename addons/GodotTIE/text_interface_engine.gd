@@ -30,6 +30,9 @@ onready var _buff_beginning = true
 onready var _turbo = false
 onready var _max_lines = 0
 onready var _break_key = KEY_RETURN
+onready var _blink_output_visible = false
+onready var _blink_output_timer = 0
+onready var _output_timer_limit = 0.1
 
 onready var _blink_input_visible = false
 onready var _blink_input_timer = 0
@@ -43,6 +46,7 @@ export(bool) var BREAK_ON_MAX_LINES = true # If the text output pauses waiting f
 export(bool) var AUTO_SKIP_WORDS = true # If words that dont fit the line only start to be printed on next line
 export(bool) var LOG_SKIPPED_LINES = true # false = delete every line that is not showing on screen
 export(bool) var SCROLL_SKIPPED_LINES = false # if the user will be able to scroll through the skipped lines; weird stuff can happen if this and BREAK_ON_MAX_LINE/LOG_SKIPPED_LINES
+export(bool) var BLINKING_OUTPUT = false # If there is a _ blinking when output is appropriate
 export(Font) var FONT
 # Text input properties!
 export(bool) var PRINT_INPUT = true # If the input is going to be printed
@@ -149,6 +153,8 @@ func set_state(i): # Changes the state of the Text Interface Engine
 	emit_signal("state_change", int(i))
 	if _state == STATE_INPUT:
 		_blink_input(true)
+	if _state == STATE_OUTPUT:
+		_blink_output(true)
 	_state = i
 	if(i == 2): # Set input index to last character on the label
 		_input_index = _label.get_text().length()
@@ -228,6 +234,7 @@ func _fixed_process(delta):
 				if(_output_delay > _output_delay_limit):
 					if(AUTO_SKIP_WORDS and (o["buff_text"][0] == " " or _buff_beginning)):
 						_skip_word()
+					_blink_output(true)
 					_label_print(o["buff_text"][0])
 					_buff_beginning = false
 					_output_delay -= _output_delay_limit
@@ -257,18 +264,32 @@ func _fixed_process(delta):
 				emit_signal("enter_break")
 				_on_break = true
 		elif (o["buff_type"] == BUFF_INPUT): # ---- It's an Input! ----
-			if(o["buff_tag"] != ""and _buff_beginning == true):
+			if(o["buff_tag"] != "" and _buff_beginning == true):
 				emit_signal("tag_buff", o["buff_tag"])
 				_buff_beginning = false
 			set_state(STATE_INPUT)
 			_buffer.pop_front()
 		elif (o["buff_type"] == BUFF_CLEAR): # ---- It's a clear command! ----
-			if(o["buff_tag"] != ""and _buff_beginning == true):
+			if(o["buff_tag"] != "" and _buff_beginning == true):
 				emit_signal("tag_buff", o["buff_tag"])
 				_buff_beginning = false
 			_label.set_text("")
 			_buffer.pop_front()
 			emit_signal("buff_cleared")
+
+		if BLINKING_OUTPUT:
+			_blink_output_timer += delta
+			if(_blink_output_timer > _output_timer_limit):
+				_blink_output_timer -= _output_timer_limit
+				_blink_output()
+	
+	elif(_state == STATE_WAITING):
+		if BLINKING_OUTPUT:
+			_blink_output_timer += delta
+			if(_blink_output_timer > _output_timer_limit):
+				_blink_output_timer -= _output_timer_limit
+				_blink_output()
+
 	elif(_state == STATE_INPUT):
 		if BLINKING_INPUT:
 			_blink_input_timer += delta
@@ -338,6 +359,20 @@ func _blink_input(reset = false):
 		_blink_input_visible = true
 		_label_print("_")
 
+func _blink_output(reset = false):
+	if(reset == true):
+		if(_blink_output_visible):
+			_delete_last_character()
+		_blink_output_visible = false
+		_blink_output_timer = 0
+		return
+	if(_blink_output_visible):
+		_delete_last_character()
+		_blink_output_visible = false
+	else:
+		_blink_output_visible = true
+		_label_print("_")
+
 func _delete_last_character(scrollup = false):
 	var n = _label.get_line_count()
 	_label.set_text(_label.get_text().left(_label.get_text().length()-1))
@@ -388,7 +423,11 @@ func _label_print(t): # Add text to the label
 			if(_blink_input_visible == true):
 				_blink_input(true)
 				return
-			
+
+			if(_blink_output_visible == true):
+				_blink_output(true)
+				return
+
 			if(_state == 1 and BREAK_ON_MAX_LINES and _max_lines_reached == false): # Add a break when maximum lines are reached
 				_delete_last_character()
 				_max_lines_reached = true
